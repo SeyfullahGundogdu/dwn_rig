@@ -50,14 +50,15 @@ nix run github:SeyfullahGundogdu/dwn_rig -- --download-folder downloads --subred
 another example:
 
 ```shell
-    nix run github:SeyfullahGundogdu/dwn_rig -- --download-folder walls_archive --subreddit-name unixporn --resolution 1920 1080
+nix run github:SeyfullahGundogdu/dwn_rig -- --download-folder walls_archive --subreddit-name unixporn --resolution 1920 1080
 ```
 
 for shorthand versions:
 
 ```shell
-    nix run github:SeyfullahGundogdu/dwn_rig -- -df downloads -sn wallpapers
-    # or nix run github:SeyfullahGundogdu/dwn_rig -- -df walls_archive -sn unixporn -r 1920 1080
+nix run github:SeyfullahGundogdu/dwn_rig -- -df downloads -sn wallpapers
+# or 
+nix run github:SeyfullahGundogdu/dwn_rig -- -df walls_archive -sn unixporn -r 1920 1080
 ```
 
 
