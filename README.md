@@ -35,30 +35,34 @@ cp ./dwn_rig/dwn_rig/dwn.py ./
 python3 dwn.py -h
 ```
 ## CLI
-There are currently 3 arguments, download-folder(downloads by default), subreddit-name(wallpapers by default, it's also case insensitive), and resolution (None by default):
+There are currently 5 arguments, download-folder(downloads by default), subreddit-name(wallpapers by default, it's also case insensitive), resolution filter (None by default), aspect ratio filter(again, None), and redgif flag(For enabling redgif links, false by default):
 
-> Note: if no resolution is specified, program will download every media file it finds on posts.
+> Note: if no specific resolution, or aspect ratio is specified, program will download every media file it finds on posts.
 
 
 ### Nix Flakes
 You can add arguments to program by:
 
+
 ```shell
+#download every media you can find, no filter but redgif links disabled
 nix run github:SeyfullahGundogdu/dwn_rig -- --download-folder downloads --subreddit-name wallpapers
 ```
 
 another example:
 
 ```shell
-nix run github:SeyfullahGundogdu/dwn_rig -- --download-folder walls_archive --subreddit-name unixporn --resolution 1920 1080
+# download to walls_archive folder, get posts from unixporn subreddit
+# filter by aspect ratio (16:9), redgif links are disabled
+nix run github:SeyfullahGundogdu/dwn_rig -- --download-folder walls_archive --subreddit-name unixporn --aspect-ratio 16 9
 ```
 
-for shorthand versions:
+for examples with shorthand versions of some arguments:
 
 ```shell
 nix run github:SeyfullahGundogdu/dwn_rig -- -df downloads -sn wallpapers
 # or 
-nix run github:SeyfullahGundogdu/dwn_rig -- -df walls_archive -sn unixporn -r 1920 1080
+nix run github:SeyfullahGundogdu/dwn_rig -- -df walls_archive -sn unixporn -r 1920 1080 -eg # -eg is for enabling redgif links
 ```
 
 
@@ -68,19 +72,19 @@ Remember to clone the repo. At the project's root directory:
 ```shell
 poetry run dwn-rig -df my_wallpaper_archive -sn wallpapers -r 1920 1080
 # or
-poetry run dwn-rig --download-folder archive_folder -sn wallpapers --resolution 1920 1080
+poetry run dwn-rig --download-folder archive_folder -sn wallpapers --aspect-ratio 21 9 # for ultrawide monitors
 ```
 
 ### Python
-get dwn.py file from the repo and then:
+You can just copy dwn.py file from the repo and then, as an example:
 ```shell
 python dwn.py -df my_wallpaper_archive -sn wallpapers -r 1920 1080
 # or
-python dwn.py --download-folder archive_folder -sn wallpapers --resolution 1920 1080
+python dwn.py --download-folder archive_folder -sn wallpapers -ar 18 9 -eg
 ```
 ## TODO
 
-- [ ] Implement filter by aspect ratio (16:9, 21:9 etc.).
+- [X] Implement filter by aspect ratio (16:9, 21:9 etc.).
 - [ ] Implement more, better filters.
 - [ ] Better parsing the json for good error handling.
 - [ ] RiiR at some point.
