@@ -46,6 +46,7 @@ async def download_media(url, download_folder, folder_name):
 
 # Function to download from a post that has multiple images
 async def download_gallery(gallery_data, download_folder, folder_name, filter):
+    global redgif_enabled
     # Get every image link
     if filter:
         # there is a filter
@@ -80,6 +81,7 @@ def calculate_aspect_ratio(w, h):
 
 # Function to filter and get a single image from a post
 async def filter_and_download_media(child, filter, download_folder):
+    global redgif_enabled
     # there is a filter
     if filter:
         w = int(child['data']['preview']['images'][0]['source']['width'])
@@ -149,6 +151,7 @@ async def get_posts(session, url, after_value, filter, download_folder):
 # Main function
 async def main(args):
     global shutdown_requested
+    global redgif_enabled
 
     download_folder = args.download_folder
     subreddit_name = args.subreddit_name
