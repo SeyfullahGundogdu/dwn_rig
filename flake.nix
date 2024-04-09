@@ -1,5 +1,5 @@
 {
-  description = "Application packaged using poetry2nix";
+  description = "Download Images and GIFs from reddit posts.";
 
   inputs = {
     flake-utils.url = "github:numtide/flake-utils";

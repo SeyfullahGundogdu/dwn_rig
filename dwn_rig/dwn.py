@@ -7,12 +7,14 @@ import argparse
 import sys
 import signal
 import math
+import re
 
 # Define the default values
 default_download_folder = "downloads"
-default_subreddit = "wallpapers"
+default_subreddit = "wallpaper"
 shutdown_requested = False
 redgif_enabled = False
+default_query= ""
 
 #Gracefully handle SIGINT
 def signal_handler(sig, frame):
@@ -41,12 +43,22 @@ async def download_media(url, download_folder, folder_name):
     download_folder = os.path.join(download_folder, folder_name)
     os.makedirs(download_folder, exist_ok=True)
     filename = os.path.join(download_folder, url.split('/')[-1].split('?')[0])
-    urllib.request.urlretrieve(url, filename)
+    # already downloaded the file
+    if os.path.exists(filename):
+
+        print(f"{filename} skipped")
+        return
+    try:
+        urllib.request.urlretrieve(url, filename)
+    except Exception as e:
+        print(e)
 
 
 # Function to download from a post that has multiple images
-async def download_gallery(gallery_data, download_folder, folder_name, filter):
+async def download_gallery(gallery_data, download_folder, filter):
     global redgif_enabled
+    folder_name = re.sub(r'[^a-zA-Z\s]', '', child['data']['title'][0:25]).replace(" x", '')
+    child = child['data']['media_metadata']
     # Get every image link
     if filter:
         # there is a filter
@@ -58,7 +70,7 @@ async def download_gallery(gallery_data, download_folder, folder_name, filter):
             filter_ar = (filter.width, filter.height)
             media_urls = [child['s']['u'] for child in gallery_data.values() if post_ar == filter_ar]
         else:
-            #it's by resolution
+            # it's by resolution
             media_urls = [child['s']['u'] for child in gallery_data.values() if child['s']['x'] == filter.width and child['s']['y'] == filter.height]
     else:
         #there is no filter
@@ -82,10 +94,10 @@ def calculate_aspect_ratio(w, h):
 # Function to filter and get a single image from a post
 async def filter_and_download_media(child, filter, download_folder):
     global redgif_enabled
-    # there is a filter
+    # check if there is a resolution filter
     if filter:
-        w = int(child['data']['preview']['images'][0]['source']['width'])
-        h = int(child['data']['preview']['images'][0]['source']['height'])
+        w = child['data']['preview']['images'][0]['source']['width']
+        h = child['data']['preview']['images'][0]['source']['height']
         # it's by aspect ratio, 16:9, 18:9, 21:9 etc.
         if filter.ar_enabled:
             post_ar = calculate_aspect_ratio(w,h)
@@ -96,14 +108,14 @@ async def filter_and_download_media(child, filter, download_folder):
         elif width != filter.width or height != filter.height:
             return
 
-    media_url = child['data']['url_overridden_by_dest']
+    media_url = child['data']['preview']['images'][0]['source']['url']
     # Redgif is banned in some countries and it hangs indefinitely upon sending a request
     if not redgif_enabled and "redgif" in media_url:
         return
+    
     # Shorten title because Linux has limitations on long folder names
-    title = child['data']['title'][0:25]
     # Sanitize title and download a single image to the folder
-    folder_name = title.replace('/', '-')
+    folder_name = re.sub(r'[^a-zA-Z\s]', '', child['data']['title'][0:25]).replace(" x", '')
     await download_media(media_url, download_folder, folder_name)
 
 
@@ -111,8 +123,7 @@ async def filter_and_download_media(child, filter, download_folder):
 async def process_post(child, filter, download_folder):
     # Post is a gallery, meaning there are multiple images
     if 'is_gallery' in child['data'] and child['data']['is_gallery']:
-        title = child['data']['title'][0:25].replace('/', '-')
-        await download_gallery(child['data']['media_metadata'], download_folder, title, filter)
+        await download_gallery(child, download_folder, filter)
     # Single image in post
     else:
         await filter_and_download_media(child, filter, download_folder)
@@ -124,16 +135,19 @@ async def get_posts(session, url, after_value, filter, download_folder):
         # We have an after value, use it as an anchor point to get posts
         if len(after_value) > 0:
             url_with_after = f"{url}&after={after_value}"
-        # After_value is empty, don't change the URL
+        # after_value is empty, don't change the URL
         else:
             url_with_after = url
 
         data = await fetch_data(session, url_with_after)
+        if len(data['data']['children']) == 0:
+            print("No post left to process.")
+            exit(0)
         # Each child is a post in the subreddit
         for child in data['data']['children']:
             # Save each post's name as our anchor at the start
             # If something goes wrong and request fails, we skip this post and go to older posts
-            # I don't know what happens if the try block fails before this point though.
+            # I don't know what happens if the try block fails after this point though.
             after_value = child['data']['name']
             await process_post(child, filter, download_folder)
             # Stop reading other posts, save current post and stop the program
@@ -158,9 +172,13 @@ async def main(args):
     resolution = args.resolution
     aspect_ratio = args.aspect_ratio
     redgif_enabled = args.enable_redgif
+    query = args.query
 
     # Subreddit URL for downloading images and gifs
-    url = f"https://www.reddit.com/r/{subreddit_name}.json?limit=100&raw_json=1"
+    if query:
+        url = f"https://www.reddit.com/r/{subreddit_name}/search.json?limit=100&raw_json=1&restrict_sr=true&q={query}"
+    else:
+        url = f"https://www.reddit.com/r/{subreddit_name}/top.json?t=all&limit=100&raw_json=1"
     
     # Check if root download folder exists
     if not os.path.exists(download_folder):
@@ -200,12 +218,12 @@ async def main(args):
 
 
 if __name__ == "__main__":
-    # Initialize argument parser
+
     parser = argparse.ArgumentParser(description="Download images from a subreddit")
     # Add arguments for download_folder and subreddit_name
-    parser.add_argument("-df", "--download-folder", default=dwn.default_download_folder, metavar="folder",
+    parser.add_argument("-df", "--download-folder", default=default_download_folder, metavar="folder",
                         help="Root folder of saved posts (default: downloads).")
-    parser.add_argument("-sn", "--subreddit-name", default=dwn.default_subreddit, metavar="subreddit",
+    parser.add_argument("-sn", "--subreddit-name", default=default_subreddit, metavar="subreddit",
                         help="Subreddit name for downloading images (default: wallpapers).")
     # Add mutually exclusive group for filtering by resolution, or aspect ratio 
     group = parser.add_mutually_exclusive_group()
@@ -214,12 +232,15 @@ if __name__ == "__main__":
     group.add_argument("-ar", "--aspect-ratio", nargs=2, type=int, metavar=('width','height'),
                         help="Filter images by aspect ratio e.g., -ar 16 9. No aspect ratio filter by default.")
 
+    # Add text filter
+    parser.add_argument("-q", "--query", default=default_query, metavar="query",
+                        help="Search query for searching posts.")
     # Check if redgif links are enabled
-    group.add_argument("-eg", "--enable-redgif", default=dwn.redgif_enabled, action="store_true",
+    group.add_argument("-eg", "--enable-redgif", default=redgif_enabled, action="store_true",
                         help="Enable redgif links, by default they are disabled because it's banned in some countries.")
     
     args = parser.parse_args()
     print(f"Started downloading media to the current directory, check the {args.download_folder} folder.")
     # Run the main function with command-line arguments
-    asyncio.run(dwn.main(args))
-    print(f"Latest post number saved to in {args.download_folder}/after")
+    asyncio.run(main(args))
+    print(f"Latest post number saved in {args.download_folder}/after")

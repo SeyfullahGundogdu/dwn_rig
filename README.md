@@ -35,7 +35,7 @@ cp ./dwn_rig/dwn_rig/dwn.py ./
 python3 dwn.py -h
 ```
 ## CLI
-There are currently 5 arguments, download-folder(downloads by default), subreddit-name(wallpapers by default, it's also case insensitive), resolution filter (None by default), aspect ratio filter(again, None), and redgif flag(For enabling redgif links, false by default):
+Keep reading for examples on how to supply arguments correctly to the program.
 
 > Note: if no specific resolution, or aspect ratio is specified, program will download every media file it finds on posts.
 
@@ -45,8 +45,8 @@ You can add arguments to program by:
 
 
 ```shell
-#download every media you can find, no filter but redgif links disabled
-nix run github:SeyfullahGundogdu/dwn_rig -- --download-folder downloads --subreddit-name wallpapers
+# download every media you can find, no filter but redgif links disabled
+nix run github:SeyfullahGundogdu/dwn_rig -- --download-folder downloads --subreddit-name wallpaper
 ```
 
 another example:
@@ -60,31 +60,41 @@ nix run github:SeyfullahGundogdu/dwn_rig -- --download-folder walls_archive --su
 for examples with shorthand versions of some arguments:
 
 ```shell
-nix run github:SeyfullahGundogdu/dwn_rig -- -df downloads -sn wallpapers
+nix run github:SeyfullahGundogdu/dwn_rig -- -df downloads -sn wallpaper
 # or 
 nix run github:SeyfullahGundogdu/dwn_rig -- -df walls_archive -sn unixporn -r 1920 1080 -eg # -eg is for enabling redgif links
+# yet another example using "space" as query:
+nix run github:SeyfullahGundogdu/dwn_rig -- -df wallpaper_archive -sn wallpaper -q space
+# or you want some sway themes:
+nix run github:SeyfullahGundogdu/dwn_rig -- -df sway_archive -sn unixporn -q sway
 ```
-
 
 ### Poetry
 Remember to clone the repo. At the project's root directory:
 
 ```shell
-poetry run dwn-rig -df my_wallpaper_archive -sn wallpapers -r 1920 1080
-# or
-poetry run dwn-rig --download-folder archive_folder -sn wallpapers --aspect-ratio 21 9 # for ultrawide monitors
+# read help text
+poetry run dwn-rig -h
+# or go right into action
+poetry run dwn-rig -df my_wallpaper_archive -sn wallpaper -r 1920 1080
+# another one
+poetry run dwn-rig --download-folder archive_folder -sn wallpaper --aspect-ratio 21 9 # for ultrawide monitors
 ```
 
 ### Python
 You can just copy dwn.py file from the repo and then, as an example:
 ```shell
-python dwn.py -df my_wallpaper_archive -sn wallpapers -r 1920 1080
-# or
-python dwn.py --download-folder archive_folder -sn wallpapers -ar 18 9 -eg
+# read help text
+poetry run dwn-rig -h
+# and then
+python dwn.py -df my_wallpaper_archive -sn wallpaper -r 1920 1080
+# another example that uses "nature" as query string
+python dwn.py --download-folder archive_folder -sn wallpaper -ar 18 9 -q nature -eg
 ```
 ## TODO
 
 - [X] Implement filter by aspect ratio (16:9, 21:9 etc.).
+- [X] Add search filter for posts.
 - [ ] Implement more, better filters.
 - [ ] Better parsing the json for good error handling.
 - [ ] RiiR at some point.
