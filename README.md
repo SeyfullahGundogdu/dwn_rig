@@ -1,14 +1,10 @@
 # Download Images and GIFs from reddit posts
 
-Simple python3 script for downloading images and GIFs from reddit.
-
-## Warning
-I don't know if you can be banned by reddit if you use this, 
-we just use `reddit/r/sub_name.json` for getting posts. The program shouldn't send too many requests at a short time interval. But using a VPN is still recommended just to be safe.
+Simple python3 script for downloading images and GIFs from reddit, now with multithreading support.
 
 ## Getting Started
 For now, program runs until it recieves a SIGINT, or until getting killed by other means.
-This script depends on requests, aiohttp and configargparse libraries. If you are using nix and flakes are enabled, you can use flake.nix file to run the program directly:
+This script depends on some third party libraries. Check the pyproject.toml file for their list. If you are using nix and flakes are enabled, you can use flake.nix file to run the program directly:
 
 ```shell
 nix run github:SeyfullahGundogdu/dwn_rig -- -h
@@ -37,7 +33,7 @@ python3 dwn.py -h
 ## CLI
 Keep reading for examples on how to supply arguments correctly to the program.
 
-> Note: if no specific resolution, or aspect ratio is specified, program will download every media file it finds on posts.
+> Note: if no specific resolution or aspect ratio is specified, program will download every media file it finds on posts.
 
 
 ### Nix Flakes
@@ -81,11 +77,11 @@ poetry run dwn-rig -df my_wallpaper_archive -sn wallpaper -r 1920 1080
 poetry run dwn-rig --download-folder archive_folder -sn wallpaper --aspect-ratio 21 9 # for ultrawide monitors
 ```
 
-### Python
-You can just copy dwn.py file from the repo and then, as an example:
+### Python (Not Tested)
+You can copy dwn.py file from the repo and then, as an example:
 ```shell
 # read help text
-poetry run dwn-rig -h
+python dwn.py -h
 # and then
 python dwn.py -df my_wallpaper_archive -sn wallpaper -r 1920 1080
 # another example that uses "nature" as query string
