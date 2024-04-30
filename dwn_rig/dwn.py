@@ -8,6 +8,7 @@ import sys
 import signal
 import math
 import re
+import threading
 
 # Define the default values
 default_download_folder = "downloads"
@@ -19,7 +20,7 @@ default_query= ""
 #Gracefully handle SIGINT
 def signal_handler(sig, frame):
     global shutdown_requested
-    print("\nReceived SIGINT, program will finish processing the current post and stop.")
+    print("\nReceived SIGINT, program will finish processing the latest posts and stop.")
     shutdown_requested = True
 
 signal.signal(signal.SIGINT, signal_handler)
@@ -40,25 +41,23 @@ async def fetch_data(session, url):
 
 # Function to download images and save them to a folder, inside our root download location
 async def download_media(url, download_folder, folder_name):
-    download_folder = os.path.join(download_folder, folder_name)
-    os.makedirs(download_folder, exist_ok=True)
-    filename = os.path.join(download_folder, url.split('/')[-1].split('?')[0])
+    post_folder = os.path.join(download_folder, folder_name)
+    os.makedirs(post_folder, exist_ok=True)
+    filename = os.path.join(post_folder, url.split('/')[-1].split('?')[0])
     # already downloaded the file
     if os.path.exists(filename):
-
-        print(f"{filename} skipped")
+        print(f"{filename} skipped.")
         return
     try:
         urllib.request.urlretrieve(url, filename)
     except Exception as e:
-        print(e)
+        return
 
 
 # Function to download from a post that has multiple images
-async def download_gallery(gallery_data, download_folder, filter):
+async def download_gallery(gallery_data, download_folder, filter, folder_name):
     global redgif_enabled
-    folder_name = re.sub(r'[^a-zA-Z\s]', '', child['data']['title'][0:25]).replace(" x", '')
-    child = child['data']['media_metadata']
+    gallery_data = gallery_data['data']['media_metadata']
     # Get every image link
     if filter:
         # there is a filter
@@ -92,7 +91,7 @@ def calculate_aspect_ratio(w, h):
     return w_r, h_r
 
 # Function to filter and get a single image from a post
-async def filter_and_download_media(child, filter, download_folder):
+async def filter_and_download_media(child, filter, download_folder, folder_name):
     global redgif_enabled
     # check if there is a resolution filter
     if filter:
@@ -108,26 +107,35 @@ async def filter_and_download_media(child, filter, download_folder):
         elif width != filter.width or height != filter.height:
             return
 
-    media_url = child['data']['preview']['images'][0]['source']['url']
     # Redgif is banned in some countries and it hangs indefinitely upon sending a request
-    if not redgif_enabled and "redgif" in media_url:
+    if not redgif_enabled and "redgif" in child['data']['url_overridden_by_dest']:
         return
     
-    # Shorten title because Linux has limitations on long folder names
-    # Sanitize title and download a single image to the folder
-    folder_name = re.sub(r'[^a-zA-Z\s]', '', child['data']['title'][0:25]).replace(" x", '')
+    media_url = child['data']['preview']['images'][0]['source']['url']
     await download_media(media_url, download_folder, folder_name)
-
 
 # Function to process each post
 async def process_post(child, filter, download_folder):
+    # Shorten title because Linux has limitations on long folder names
+    post_title = re.sub(r'[^a-zA-Z\s]', '', child['data']['title'][0:25]).replace(" x", '').strip()
     # Post is a gallery, meaning there are multiple images
     if 'is_gallery' in child['data'] and child['data']['is_gallery']:
-        await download_gallery(child, download_folder, filter)
+        await download_gallery(child, download_folder, filter, post_title)
     # Single image in post
     else:
-        await filter_and_download_media(child, filter, download_folder)
+        await filter_and_download_media(child, filter, download_folder, post_title)
 
+# Wrapper function to download posts in a multithreaded environment.
+def posts_wrapper(child, i, latest_index, filter, download_folder, index_lock):
+    
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(process_post(child, filter, download_folder))
+    loop.close()
+    with index_lock:
+        # current post's index is greater than the latest, update latest_index
+        if i > latest_index[0]: # cheating by using a list and making python pass by reference
+            latest_index[0] = i
 
 async def get_posts(session, url, after_value, filter, download_folder):
     global shutdown_requested
@@ -140,20 +148,33 @@ async def get_posts(session, url, after_value, filter, download_folder):
             url_with_after = url
 
         data = await fetch_data(session, url_with_after)
-        if len(data['data']['children']) == 0:
-            print("No post left to process.")
+        children = data['data']['children']
+        if len(children) == 0:
+            print("No posts found.")
             exit(0)
-        # Each child is a post in the subreddit
-        for child in data['data']['children']:
-            # Save each post's name as our anchor at the start
-            # If something goes wrong and request fails, we skip this post and go to older posts
-            # I don't know what happens if the try block fails after this point though.
-            after_value = child['data']['name']
-            await process_post(child, filter, download_folder)
-            # Stop reading other posts, save current post and stop the program
-            if shutdown_requested:
-                break
+        # make a lock for preventing data race when saving the latest post processed.
+        # used an array with 1 element, that way we will use the variable by reference instead of value     
+        index_lock = threading.Lock()
+        latest_index = [0]
 
+        threads = []
+        # Each child is a post in the subreddit
+        # download each post in its own thread.
+        for (i, child) in enumerate(children):
+            # If something goes wrong and request fails, we skip this post and go to older posts
+            # can't use async functions when starting a thread, that's why we use a wrapper function
+            t = threading.Thread(target=posts_wrapper, args=(child, i, latest_index, filter, download_folder, index_lock))
+            t.start()
+            threads.append(t)
+            
+            if shutdown_requested:
+                # Stop processing other posts.
+                break
+        #join worker threads to our main thread.
+        for t in threads:
+            t.join()
+        # return the latest post's name.
+        after_value = children[latest_index[0]]['data']['name']    
         return after_value
 
     except Exception as e:
@@ -176,10 +197,9 @@ async def main(args):
 
     # Subreddit URL for downloading images and gifs
     if query:
-        url = f"https://www.reddit.com/r/{subreddit_name}/search.json?limit=100&raw_json=1&restrict_sr=true&q={query}"
+        url = f"https://www.reddit.com/r/{subreddit_name}/search.json?limit=10&raw_json=1&restrict_sr=true&q={query}"
     else:
-        url = f"https://www.reddit.com/r/{subreddit_name}/top.json?t=all&limit=100&raw_json=1"
-    
+        url = f"https://www.reddit.com/r/{subreddit_name}/top.json?t=all&limit=10&raw_json=1"
     # Check if root download folder exists
     if not os.path.exists(download_folder):
         os.makedirs(download_folder)
