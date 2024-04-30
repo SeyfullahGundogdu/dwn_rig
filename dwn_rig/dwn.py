@@ -40,10 +40,16 @@ async def fetch_data(session, url):
 
 
 # Function to download images and save them to a folder, inside our root download location
-async def download_media(url, download_folder, folder_name):
+async def download_media(url, download_folder, folder_name, index=None):
     post_folder = os.path.join(download_folder, folder_name)
     os.makedirs(post_folder, exist_ok=True)
-    filename = os.path.join(post_folder, url.split('/')[-1].split('?')[0])
+    if index != None:
+        # if index is supplied it's zero based, 
+        # that's why we are increasing it by one
+        filename = os.path.join(post_folder, "{:02d}_".format(index+1)+url.split('/')[-1].split('?')[0])
+    else:
+        filename = os.path.join(post_folder, url.split('/')[-1].split('?')[0])
+    
     # already downloaded the file
     if os.path.exists(filename):
         print(f"{filename} skipped.")
@@ -57,28 +63,39 @@ async def download_media(url, download_folder, folder_name):
 # Function to download from a post that has multiple images
 async def download_gallery(gallery_data, download_folder, filter, folder_name):
     global redgif_enabled
-    gallery_data = gallery_data['data']['media_metadata']
-    # Get every image link
-    if filter:
-        # there is a filter
-        if filter.ar_enabled:
-            # and it's by aspect ratio
-            w = child['s']['x']
-            h = child['s']['y']
-            post_ar = calculate_aspect_ratio(w,h)
-            filter_ar = (filter.width, filter.height)
-            media_urls = [child['s']['u'] for child in gallery_data.values() if post_ar == filter_ar]
+    #get the gallery images in order from here
+    try:
+        media_data = gallery_data['data']['gallery_data']['items']
+        # Get every image link
+        if filter:
+            # there is a filter
+            if filter.ar_enabled:
+                # and it's by aspect ratio
+                media_urls = []
+                for (i, child) in enumerate(media_data):
+                    media_id = child['media_id']
+                    w = gallery_data['data']["media_metadata"][media_id]['s']['x']
+                    h = gallery_data['data']["media_metadata"][media_id]['s']['y']
+                    post_ar = calculate_aspect_ratio(w,h)
+                    filter_ar = (filter.width, filter.height)
+                    if post_ar == filter_ar:
+                        media_urls.append(i, (gallery_data['data']["media_metadata"][child['media_id']]['s']['u']))
+            else:
+                # it's by resolution
+                media = [(i, gallery_data['data']["media_metadata"][media_data[i]['media_id']]['s']) for i in range(len(media_data))]
+                media_urls = [(child[0], child[1]['u']) for child in media if child[1]['x'] == filter.width and child[1]['y'] == filter.height]
         else:
-            # it's by resolution
-            media_urls = [child['s']['u'] for child in gallery_data.values() if child['s']['x'] == filter.width and child['s']['y'] == filter.height]
-    else:
-        #there is no filter
-        media_urls = [child['s']['u'] for child in gallery_data.values()]
+            #there is no filter
+            media_urls = [(i, gallery_data['data']["media_metadata"][media_data[i]['media_id']]['s']['u']) for i in range(len(media_data))]
+        for (index, url) in media_urls:
+            if not redgif_enabled and "redgif" in url:
+                return
+            await download_media(url, download_folder, folder_name, index=index)
     
-    for url in media_urls:
-        if not redgif_enabled and "redgif" in url:
-            return
-        await download_media(url, download_folder, folder_name)
+    except Exception as e:
+        # some images' media_metadata status can be a non-valid value, eg failed
+        # we just ignore them instead of filtering in the above try block
+        return
 
 #calculates aspect ratio of images,
 # 16:9 for 1920x1080
@@ -94,25 +111,27 @@ def calculate_aspect_ratio(w, h):
 async def filter_and_download_media(child, filter, download_folder, folder_name):
     global redgif_enabled
     # check if there is a resolution filter
-    if filter:
-        w = child['data']['preview']['images'][0]['source']['width']
-        h = child['data']['preview']['images'][0]['source']['height']
-        # it's by aspect ratio, 16:9, 18:9, 21:9 etc.
-        if filter.ar_enabled:
-            post_ar = calculate_aspect_ratio(w,h)
-            filter_ar = (filter.width, filter.height)
-            if post_ar != filter_ar:
+    try:
+        if filter:
+            w = child['data']['preview']['images'][0]['source']['width']
+            h = child['data']['preview']['images'][0]['source']['height']
+            # it's by aspect ratio, 16:9, 18:9, 21:9 etc.
+            if filter.ar_enabled:
+                post_ar = calculate_aspect_ratio(w,h)
+                filter_ar = (filter.width, filter.height)
+                if post_ar != filter_ar:
+                    return
+            # it's by direct resolution 1920x1080 etc.
+            elif w != filter.width or h != filter.height:
                 return
-        # it's by direct resolution 1920x1080 etc.
-        elif width != filter.width or height != filter.height:
-            return
 
-    # Redgif is banned in some countries and it hangs indefinitely upon sending a request
-    if not redgif_enabled and "redgif" in child['data']['url_overridden_by_dest']:
+        # Redgif is banned in some countries and it hangs indefinitely upon sending a request
+        if not redgif_enabled and "redgif" in child['data']['url_overridden_by_dest']:
+            return    
+        media_url = child['data']['url_overridden_by_dest']
+        await download_media(media_url, download_folder, folder_name)
+    except Exception as e:
         return
-    
-    media_url = child['data']['preview']['images'][0]['source']['url']
-    await download_media(media_url, download_folder, folder_name)
 
 # Function to process each post
 async def process_post(child, filter, download_folder):
@@ -161,6 +180,10 @@ async def get_posts(session, url, after_value, filter, download_folder):
         # Each child is a post in the subreddit
         # download each post in its own thread.
         for (i, child) in enumerate(children):
+            # I used removal_reason value for checking if a post was removed or not
+            # I don't know any better way to concretely tell if a post is removed from reddit.
+            if child['data']['removal_reason'] != None:
+                continue
             # If something goes wrong and request fails, we skip this post and go to older posts
             # can't use async functions when starting a thread, that's why we use a wrapper function
             t = threading.Thread(target=posts_wrapper, args=(child, i, latest_index, filter, download_folder, index_lock))
@@ -199,7 +222,7 @@ async def main(args):
     if query:
         url = f"https://www.reddit.com/r/{subreddit_name}/search.json?limit=10&raw_json=1&restrict_sr=true&q={query}"
     else:
-        url = f"https://www.reddit.com/r/{subreddit_name}/top.json?t=all&limit=10&raw_json=1"
+        url = f"https://www.reddit.com/r/{subreddit_name}/top.json?t=year&limit=10&raw_json=1"
     # Check if root download folder exists
     if not os.path.exists(download_folder):
         os.makedirs(download_folder)
